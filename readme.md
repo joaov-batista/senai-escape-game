@@ -41,7 +41,5 @@ Não é necessário configurar servidores complexos ou bancos de dados. Siga os 
 Projeto desenvolvido como atividade de lazer e aprendizado técnico durante o curso no **SENAI**. 
 
 ---
-Desenvolvido por [Seu Nome/Seu GitHub]
+Desenvolvido por joaov-batista
 ```
-
-Espero que essas sugestões ajudem a transformar seu projeto de diversão em um destaque no seu GitHub! Se precisar de ajuda com alguma lógica específica de JS, estou à disposição.
