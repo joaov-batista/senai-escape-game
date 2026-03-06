@@ -20,7 +20,7 @@ Este projeto foi criado como um exercício prático de manipulação de DOM, ló
 
 ## 🔧 Como rodar localmente
 
-Não é necessário configurar servidores complexos ou bancos de dados. Siga os passos abaixo:
+Não é necessário configurar servidores complexos ou bancos de dados. Acesse o site https://fujabrisa.vercel.app/ ou siga os passos abaixo:
 
 1. **Clone o repositório:**
    ```bash
