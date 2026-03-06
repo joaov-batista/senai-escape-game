@@ -120,7 +120,7 @@
         <div id="invis-warning">👻 VOCÊ ESTÁ INVISÍVEL!</div>
         
         <div id="stats">
-            <div id="hearts">❤️❤️❤️</div>
+            <div id="hearts">❤️❤️❤️❤️</div>
             <div class="bar-container" id="box-stamina">
                 <span class="bar-label">STAMINA</span>
                 <div id="stamina-bar"></div>
@@ -182,21 +182,23 @@
     let isHost = false, peer = null, connections = {}, myId = null, gameMode = 'pve';
     let lobbyPlayers = []; 
     
+    // ATUALIZADO: Vida = 8 (4 corações), taserAmmo e speedBoostTimer
     let playerData = {
         name: 'Sobrevivente', skin: 'player1.png', role: 'survivor',
-        health: 6, stamina: 100, flashlightBattery: 100, flashlightOn: true,
-        pages: 0, stunTimer: 0, isDead: false, xRayActive: false
+        health: 8, stamina: 100, flashlightBattery: 100, flashlightOn: true,
+        pages: 0, stunTimer: 0, isDead: false, xRayActive: false, inventory: null, taserAmmo: 0, speedBoostTimer: 0
     };
 
+    // ATUALIZADO: Nerf do Monstro (CD maior e Tempo ativo menor)
     let mSkills = {
-        f: { active: 0, cd: 0, maxActive: 5, maxCd: 15, name: '[F] Raio-X' },
-        r: { active: 0, cd: 0, maxActive: 5, maxCd: 12, name: '[R] Corrida' },
-        i: { active: 0, cd: 0, maxActive: 10, maxCd: 25, name: '[I] Invisível' }
+        f: { active: 0, cd: 0, maxActive: 4, maxCd: 22, name: '[F] Raio-X' },
+        r: { active: 0, cd: 0, maxActive: 4, maxCd: 20, name: '[R] Corrida' },
+        i: { active: 0, cd: 0, maxActive: 6, maxCd: 35, name: '[I] Invisível' }
     };
     
     let specIndex = 0;
     
-    // FÍSICA IMPECÁVEL (Sem Tremedeira / Ghost Drifting)
+    // FÍSICA
     let playerPhysicsY = 2.0; 
     let targetHeight = 2.0; 
     let currentHeight = 2.0; 
@@ -370,7 +372,6 @@
         
         init3D(); generateMap(); updateHUD(); animate();
         
-        // BUG DA CÂMERA QUEBRANDO FIXADO: Só chama lock() se NÃO estiver travado
         const canvas = document.getElementById('game-container');
         canvas.addEventListener('click', () => { 
             if(!controls.isLocked && document.getElementById('overlay').style.display !== 'flex' && !playerData.isDead) {
@@ -512,14 +513,17 @@
         if (isHost && gameMode === 'pve') spawnMonsterAI();
     }
 
+    // ATUALIZADO: Spawna blocos verdes (speedblock)
     function spawnItemsLocally() {
         let idCounter = 0;
         for(let i=0; i<15; i++) createItem(idCounter++, 'battery', null, rng()*200-100, rng()*200-100);
         for(let i=0; i<5; i++) createItem(idCounter++, 'taser', null, rng()*200-100, rng()*200-100);
         for(let i=0; i<8; i++) createItem(idCounter++, 'page', null, rng()*200-100, rng()*200-100);
         for(let i=0; i<4; i++) createItem(idCounter++, 'medkit', null, rng()*200-100, rng()*200-100);
+        for(let i=0; i<4; i++) createItem(idCounter++, 'speedblock', null, rng()*200-100, rng()*200-100);
     }
 
+    // ATUALIZADO: Criação do speedblock
     function createItem(id, type, color, x, z) {
         let mesh;
         if(type === 'page') {
@@ -527,6 +531,11 @@
             const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
             new THREE.TextureLoader().load('pagina.jpg', tex => { mat.map = tex; mat.needsUpdate = true; });
             mesh = new THREE.Mesh(geo, mat); mesh.position.set(x, 2, z); mesh.rotation.y = rng() * Math.PI;
+        } else if (type === 'speedblock') {
+            const geo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+            const mat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.6 });
+            mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, 1, z);
         } else {
             let texName = '';
             if(type === 'battery') texName = 'pilha.png';
@@ -548,6 +557,7 @@
         scene.add(corpse);
     }
 
+    // ATUALIZADO: Taser com munição
     function setupControls() {
         document.addEventListener('keydown', (e) => {
             if(playerData.isDead || playerData.stunTimer > 0) return;
@@ -593,14 +603,21 @@
             if(playerData.stunTimer > 0) return;
             
             if(playerData.role === 'survivor' && playerData.inventory === 'taser' && e.button === 0) {
-                showMessage("TASER DISPARADO!"); playerData.inventory = null; updateHUD();
-                const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
-                broadcast({ type: 'taserFired', pos: camera.position.toArray(), dir: dir.toArray() });
-                
-                if(isHost && gameMode === 'pve' && monsterMesh && monsterMesh.visible) {
-                    const toMonster = new THREE.Vector3().subVectors(monsterMesh.position, camera.position);
-                    if(toMonster.length() < 25 && dir.dot(toMonster.normalize()) > 0.8) {
-                        monsterAIState.stunTimer = 1.0; showMessage("A BRISA FOI PARALISADA!");
+                if (playerData.taserAmmo > 0) {
+                    playerData.taserAmmo--;
+                    showMessage(`TASER DISPARADO! (${playerData.taserAmmo} restantes)`);
+                    
+                    if (playerData.taserAmmo <= 0) playerData.inventory = null;
+                    updateHUD();
+                    
+                    const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+                    broadcast({ type: 'taserFired', pos: camera.position.toArray(), dir: dir.toArray() });
+                    
+                    if(isHost && gameMode === 'pve' && monsterMesh && monsterMesh.visible) {
+                        const toMonster = new THREE.Vector3().subVectors(monsterMesh.position, camera.position);
+                        if(toMonster.length() < 25 && dir.dot(toMonster.normalize()) > 0.8) {
+                            monsterAIState.stunTimer = 1.0; showMessage("A BRISA FOI PARALISADA!");
+                        }
                     }
                 }
             }
@@ -613,6 +630,7 @@
         });
     }
 
+    // ATUALIZADO: Lógica de pickup de itens (speedblock e taser ammo)
     function checkItems() {
         if(playerData.role === 'monster') return; 
 
@@ -622,16 +640,12 @@
                 item.active = false; item.mesh.visible = false;
                 
                 if (item.type === 'battery') { playerData.flashlightBattery = 100; showMessage("Bateria Recarregada!"); } 
-                else if (item.type === 'taser') { playerData.inventory = 'taser'; showMessage("Você pegou um Taser! (M1)"); } 
-                else if (item.type === 'medkit') { playerData.health = Math.min(6, playerData.health + 2); showMessage("Curou 1 Coração!"); } 
-                else if (item.type === 'page') {
-                    playerData.pages++; showMessage(`Página ${playerData.pages}/8 Coletada!`);
-                }
+                else if (item.type === 'taser') { playerData.taserAmmo = 3; playerData.inventory = 'taser'; showMessage("Pegou Taser! (3 Tiros)"); } 
+                else if (item.type === 'medkit') { playerData.health = Math.min(8, playerData.health + 2); showMessage("Curou 1 Coração!"); } 
+                else if (item.type === 'speedblock') { playerData.speedBoostTimer = 10.0; showMessage("SUPER VELOCIDADE ATIVADA!"); }
                 
+                // Trata as páginas na rede, então manda o evento pra geral
                 broadcast({ type: 'itemPicked', itemId: item.id }); updateHUD();
-                if(playerData.pages >= 8) {
-                    broadcast({ type: 'endGame', winner: 'survivors' }); showEndScreen('survivors');
-                }
             }
         }
     }
@@ -642,6 +656,7 @@
         return `(Pronto)`;
     }
 
+    // ATUALIZADO: Mostra munição do taser
     function updateHUD() {
         if(playerData.isDead) return;
 
@@ -650,7 +665,10 @@
         document.getElementById('stamina-bar').style.width = playerData.stamina + '%';
         document.getElementById('battery-bar').style.width = playerData.flashlightBattery + '%';
         document.getElementById('pages').innerText = `Páginas: ${playerData.pages} / 8`;
-        document.getElementById('inventory').innerText = `Arma: ${playerData.inventory === 'taser' ? '🔫 Taser' : 'Vazio'}`;
+        
+        let invText = 'Vazio';
+        if (playerData.inventory === 'taser') invText = `🔫 Taser (${playerData.taserAmmo})`;
+        document.getElementById('inventory').innerText = `Arma: ${invText}`;
 
         if(playerData.role === 'monster') {
             document.getElementById('pages').innerText = 'OBJETIVO: CAÇAR';
@@ -695,9 +713,8 @@
         });
     }
 
-    // HANDLERS DE REDE (COM RELAY GLOBAL PARA O HOST)
+    // ATUALIZADO: Progresso compartilhado das páginas
     function handleNetworkData(senderId, data) {
-        // Host re-envia (Relay) os pacotes de ação para todos os outros conectados verem
         const relayTypes = ['update', 'itemPicked', 'playerDied', 'monsterAttack', 'taserFired'];
         if (isHost && relayTypes.includes(data.type)) {
             Object.values(connections).forEach(conn => {
@@ -715,10 +732,24 @@
         else if (data.type === 'start') processStartGame(data);
         else if (data.type === 'endGame') showEndScreen(data.winner);
         else if (data.type === 'brisaSpawned' && playerData.role !== 'monster') showBigWarning("A BRISA ESTÁ ATRÁS DE VOCÊ!", 3000);
+        
         else if (data.type === 'itemPicked') {
             const item = mapItems.find(i => i.id === data.itemId);
-            if(item) { item.active = false; item.mesh.visible = false; }
+            if(item) { 
+                item.active = false; item.mesh.visible = false; 
+                // === FIX PROGRESSO COOPERATIVO ===
+                if (item.type === 'page' && playerData.role !== 'monster') {
+                    playerData.pages++; 
+                    showMessage(`Página ${playerData.pages}/8 Coletada pela Equipe!`);
+                    updateHUD();
+                    if(playerData.pages >= 8) {
+                        broadcast({ type: 'endGame', winner: 'survivors' }); 
+                        showEndScreen('survivors');
+                    }
+                }
+            }
         }
+        
         else if (data.type === 'playerDied') {
             createCorpse(data.skin, data.pos);
             if(networkPlayers[data.id]) { networkPlayers[data.id].userData.isDead = true; networkPlayers[data.id].visible = false; }
@@ -726,7 +757,7 @@
         }
         else if (data.type === 'monsterAttack' && playerData.role !== 'monster' && !playerData.isDead) {
             const mPos = new THREE.Vector3().fromArray(data.pos);
-            if (camera.position.distanceTo(mPos) < 5.0) { 
+            if (camera.position.distanceTo(mPos) < 4.0) { // ATUALIZADO: Hitbox do monstro de 5.0 pra 4.0
                 playerData.health -= 2; showMessage("A BRISA TE ATACOU! (-1 Coração)");
                 
                 const blood = document.getElementById('blood-overlay'); blood.style.opacity = 1; setTimeout(() => blood.style.opacity = 0, 500);
@@ -794,7 +825,6 @@
     function animate() {
         requestAnimationFrame(animate);
         const time = performance.now(); 
-        // Trava para impedir a física de quebrar em lags ou abas minimizadas
         const delta = Math.min((time - prevTime) / 1000, 0.1); 
 
         if (rainGeo) {
@@ -807,9 +837,17 @@
             rainGeo.position.x = camera.position.x; rainGeo.position.z = camera.position.z;
         }
 
-        // BATERIA AGORA GASTA (Dura cerca de 30-40s dependendo do piscar)
+        // Animando a rotação dos itens de speedblock no mapa
+        mapItems.forEach(item => {
+            if (item.active && item.type === 'speedblock' && item.mesh) {
+                item.mesh.rotation.y += 2 * delta;
+                item.mesh.rotation.x += 1 * delta;
+            }
+        });
+
+        // Bateria dura mais agora (1.5 * delta ao inves de 3.0)
         if (playerData.role === 'survivor' && playerData.flashlightOn) {
-            playerData.flashlightBattery -= 3.0 * delta; 
+            playerData.flashlightBattery -= 1.5 * delta; 
             if (playerData.flashlightBattery < 15 && playerData.flashlightBattery > 0) {
                 flashlight.intensity = Math.random() > 0.2 ? 6.0 : 0.5;
             } else if (playerData.flashlightBattery <= 0) { 
@@ -877,13 +915,11 @@
                 playerData.stunTimer -= delta; moveForward = false; moveBackward = false; moveLeft = false; moveRight = false;
             }
 
-            // CORREÇÃO DO DRIFTING GHOST FANTASMA
             if (!moveForward && !moveBackward && Math.abs(velocity.z) < 0.5) velocity.z = 0;
             if (!moveLeft && !moveRight && Math.abs(velocity.x) < 0.5) velocity.x = 0;
 
             velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta; 
             
-            // FÍSICA SEPARADA (Pulo real)
             currentHeight += (targetHeight - currentHeight) * 10 * delta;
 
             let groundY = 0;
@@ -911,7 +947,8 @@
             
             if (isMoving) {
                 if (isRunning && playerData.stamina > 0 && !isCrouching) {
-                    speedMult = 1.8; playerData.stamina -= 25 * delta;
+                    // ATUALIZADO: Stamina gasta menos (14 ao inves de 25)
+                    speedMult = 1.8; playerData.stamina -= 14 * delta;
                 } else if (isCrouching) {
                     speedMult = 0.5; playerData.stamina += 5 * delta;
                 } else {
@@ -921,7 +958,14 @@
                 playerData.stamina += isCrouching ? 40 * delta : 25 * delta;
             }
             
-            if(mSkills.r && mSkills.r.active > 0) speedMult = 3.0;
+            // ATUALIZADO: Lógica de super velocidade do bloco verde (dobra a velocidade final)
+            if (playerData.speedBoostTimer > 0) {
+                speedMult *= 2.0;
+                playerData.speedBoostTimer -= delta;
+            }
+            
+            // ATUALIZADO: Nerf na corrida da Brisa
+            if(mSkills.r && mSkills.r.active > 0) speedMult = 2.2; 
             if (camera.position.z > 20 && camera.position.z < 40) speedMult *= 0.5; 
 
             playerData.stamina = Math.max(0, Math.min(100, playerData.stamina));
