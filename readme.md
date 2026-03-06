@@ -24,7 +24,7 @@ Não é necessário configurar servidores complexos ou bancos de dados. Siga os 
 
 1. **Clone o repositório:**
    ```bash
-   git clone https://github.com/seu-usuario/nome-do-repositorio.git
+   git clone https://github.com/joaov-batista/senai-escape-game.git
    ```
 
 2. **Acesse a pasta do projeto:**
