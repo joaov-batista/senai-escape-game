@@ -10,7 +10,6 @@
         body { overflow: hidden; background-color: #000; color: #fff; font-family: 'Roboto', sans-serif; user-select: none; width: 100vw; height: 100vh; }
         #game-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; }
         
-        /* === LOBBY E UI RESPONSIVOS E LIMPOS === */
         .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 40%, #1c1a24 0%, #050505 80%); z-index: 10; padding: 20px; }
         #waiting-room { display: none; }
         
@@ -37,7 +36,6 @@
         .player-item:last-child { border-bottom: none; }
         #display-room-id { background: #000; padding: 15px; font-size: clamp(2rem, 6vw, 2.8rem); font-weight: bold; color: #fff; letter-spacing: 8px; border: 2px dashed #ff3333; margin-bottom: 20px; user-select: all; text-shadow: 0 0 10px #ff3333; }
 
-        /* VFX E TELA DE JOGO */
         #vignette { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; background: radial-gradient(circle, rgba(0,0,0,0) 40%, rgba(0,0,0,0.95) 100%); display: none; }
         #blood-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 6; background: radial-gradient(circle, rgba(255,0,0,0) 40%, rgba(200,0,0,0.6) 100%); opacity: 0; transition: opacity 0.3s; display: none; }
 
@@ -158,11 +156,9 @@
     </div>
 
 <script>
-    // === RNG SEED ===
     let mapSeed = 1;
     function rng() { let x = Math.sin(mapSeed++) * 10000; return x - Math.floor(x); }
 
-    // === LOBBY E PERSONAGENS ===
     const skins = ['player1.png', 'player2.png', 'player3.png', 'player4.png', 'player5.png', 'player6.png'];
     let selectedSkin = 'player1.png';
     const charGrid = document.getElementById('characterGrid');
@@ -175,21 +171,32 @@
             document.querySelectorAll('.char-card').forEach(c => c.classList.remove('selected'));
             card.classList.add('selected');
         };
-        const img = document.createElement('img'); img.src = skin;
-        card.appendChild(img); charGrid.appendChild(card);
+        const img = document.createElement('img');
+        img.src = skin;
+        card.appendChild(img);
+        charGrid.appendChild(card);
     });
 
     let isHost = false, peer = null, connections = {}, myId = null, gameMode = 'pve';
     let lobbyPlayers = []; 
     
-    // ATUALIZADO: Vida = 8 (4 corações), taserAmmo e speedBoostTimer
     let playerData = {
-        name: 'Sobrevivente', skin: 'player1.png', role: 'survivor',
-        health: 8, stamina: 100, flashlightBattery: 100, flashlightOn: true,
-        pages: 0, stunTimer: 0, isDead: false, xRayActive: false, inventory: null, taserAmmo: 0, speedBoostTimer: 0
+        name: 'Sobrevivente',
+        skin: 'player1.png',
+        role: 'survivor',
+        health: 8,
+        stamina: 100,
+        flashlightBattery: 100,
+        flashlightOn: true,
+        pages: 0,
+        stunTimer: 0,
+        isDead: false,
+        xRayActive: false,
+        inventory: null,
+        taserAmmo: 0,
+        speedBoostTimer: 0
     };
 
-    // ATUALIZADO: Nerf do Monstro (CD maior e Tempo ativo menor)
     let mSkills = {
         f: { active: 0, cd: 0, maxActive: 4, maxCd: 22, name: '[F] Raio-X' },
         r: { active: 0, cd: 0, maxActive: 4, maxCd: 20, name: '[R] Corrida' },
@@ -198,7 +205,6 @@
     
     let specIndex = 0;
     
-    // FÍSICA
     let playerPhysicsY = 2.0; 
     let targetHeight = 2.0; 
     let currentHeight = 2.0; 
@@ -210,19 +216,71 @@
     let rainGeo, rainCount = 1500;
     let footprintGroup = new THREE.Group();
     let footprintTimer = 0;
+    let flashlight = null;
 
-    function generateRoomCode() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
+    function generateRoomCode() {
+        return Math.random().toString(36).substring(2, 8).toUpperCase();
+    }
 
     function getLobbyData() {
         playerData.name = document.getElementById('playerName').value || 'Sobrevivente';
-        playerData.skin = selectedSkin; gameMode = document.getElementById('gameMode').value;
+        playerData.skin = selectedSkin;
+        gameMode = document.getElementById('gameMode').value;
     }
 
     function initPeer(customId, onOpen) {
         document.getElementById('lobby-msg').innerText = "Conectando ao servidor...";
-        peer = new Peer(customId); 
-        peer.on('open', id => { myId = id; onOpen(id); });
-        peer.on('error', err => { document.getElementById('lobby-msg').innerText = "Erro de Conexão. Verifique a internet."; });
+
+        peer = new Peer(customId || undefined, {
+            host: '0.peerjs.com',
+            port: 443,
+            path: '/',
+            secure: true,
+            key: 'peerjs',
+            debug: 2,
+            pingInterval: 3000,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:global.stun.twilio.com:3478' }
+                ],
+                sdpSemantics: 'unified-plan'
+            }
+        });
+
+        peer.on('open', id => {
+            myId = id;
+            document.getElementById('lobby-msg').innerText = "";
+            onOpen(id);
+        });
+
+        peer.on('disconnected', () => {
+            document.getElementById('lobby-msg').innerText = "Conexão caiu. Tentando reconectar...";
+            try {
+                peer.reconnect();
+            } catch (e) {
+                console.error('Erro ao reconectar:', e);
+            }
+        });
+
+        peer.on('close', () => {
+            document.getElementById('lobby-msg').innerText = "Conexão encerrada.";
+        });
+
+        peer.on('error', err => {
+            console.error('PeerJS error:', err);
+
+            let msg = "Erro de conexão.";
+            if (err && err.type) {
+                if (err.type === 'network') msg = "Falha de rede/WebSocket no PeerJS.";
+                else if (err.type === 'server-error') msg = "Servidor PeerJS indisponível.";
+                else if (err.type === 'peer-unavailable') msg = "Sala não encontrada.";
+                else if (err.type === 'browser-incompatible') msg = "Navegador incompatível com WebRTC.";
+                else msg = `Erro PeerJS: ${err.type}`;
+            }
+
+            document.getElementById('lobby-msg').innerText = msg;
+        });
     }
 
     function showWaitingRoom(roomId) {
@@ -234,37 +292,76 @@
     }
 
     function updateWaitingRoomUI() {
-        const list = document.getElementById('players-list'); list.innerHTML = '';
-        lobbyPlayers.forEach(p => { list.innerHTML += `<div class="player-item">👤 ${p.name}</div>`; });
+        const list = document.getElementById('players-list');
+        list.innerHTML = '';
+        lobbyPlayers.forEach(p => {
+            list.innerHTML += `<div class="player-item">👤 ${p.name}</div>`;
+        });
     }
 
     function hostGame() {
-        getLobbyData(); const roomCode = generateRoomCode();
+        getLobbyData();
+        const roomCode = generateRoomCode();
+
         initPeer(roomCode, (id) => {
-            isHost = true; showWaitingRoom(id); document.getElementById('btn-start').style.display = 'block';
+            isHost = true;
+            showWaitingRoom(id);
+            document.getElementById('btn-start').style.display = 'block';
+
             peer.on('connection', conn => {
                 connections[conn.peer] = conn;
+
                 conn.on('data', data => handleNetworkData(conn.peer, data));
-                conn.on('open', () => conn.send({ type: 'requestInfo' }));
+
+                conn.on('open', () => {
+                    conn.send({ type: 'requestInfo' });
+                });
+
+                conn.on('error', err => {
+                    console.error(`Erro na conexão com ${conn.peer}:`, err);
+                });
+
+                conn.on('close', () => {
+                    delete connections[conn.peer];
+                });
             });
         });
     }
 
     function joinGame() {
-        getLobbyData(); const roomId = document.getElementById('roomId').value.trim().toUpperCase();
+        getLobbyData();
+        const roomId = document.getElementById('roomId').value.trim().toUpperCase();
         if (roomId.length !== 6) return alert("O código deve ter 6 dígitos!");
-        initPeer(null, (id) => {
-            const conn = peer.connect(roomId);
+
+        initPeer(null, () => {
+            const conn = peer.connect(roomId, {
+                reliable: false,
+                serialization: 'json'
+            });
+
             conn.on('open', () => {
-                connections[roomId] = conn; showWaitingRoom(roomId);
+                connections[roomId] = conn;
+                showWaitingRoom(roomId);
                 document.getElementById('wait-msg').style.display = 'block';
                 conn.on('data', data => handleNetworkData(roomId, data));
             });
-            conn.on('error', () => alert("Sala não encontrada!"));
+
+            conn.on('error', (err) => {
+                console.error('Erro ao entrar na sala:', err);
+                alert("Sala não encontrada ou conexão falhou.");
+            });
+
+            conn.on('close', () => {
+                console.warn('Conexão com host fechada.');
+            });
         });
     }
 
-    function broadcast(data) { Object.values(connections).forEach(conn => { if(conn.open) conn.send(data); }); }
+    function broadcast(data) {
+        Object.values(connections).forEach(conn => {
+            if (conn.open) conn.send(data);
+        });
+    }
 
     function dispatchStartGame() {
         let monsterId = null;
@@ -273,19 +370,20 @@
             monsterId = lobbyPlayers[randomIndex].id;
         }
         const gameSeed = Math.random() * 10000;
-        broadcast({ type: 'start', monsterId: monsterId, seed: gameSeed }); 
+        broadcast({ type: 'start', monsterId: monsterId, seed: gameSeed });
         processStartGame({ type: 'start', monsterId: monsterId, seed: gameSeed });
     }
 
     function showBigWarning(text, duration = 4000) {
         const warningEl = document.getElementById('big-warning');
         if (!warningEl) return;
-        warningEl.innerText = text; warningEl.style.display = 'block';
+        warningEl.innerText = text;
+        warningEl.style.display = 'block';
         setTimeout(() => warningEl.style.display = 'none', duration);
     }
 
     function checkGameOverState() {
-        if(isHost) {
+        if (isHost) {
             let survivorsAlive = 0;
             if (playerData.role !== 'monster' && !playerData.isDead) survivorsAlive++;
             Object.values(networkPlayers).forEach(p => {
@@ -307,15 +405,18 @@
         if (killerPosArray) {
             controls.unlock();
             const kPos = new THREE.Vector3().fromArray(killerPosArray);
-            camera.lookAt(kPos.x, kPos.y + 1, kPos.z); 
+            camera.lookAt(kPos.x, kPos.y + 1, kPos.z);
         }
 
         setTimeout(() => {
             let survivorsAlive = 0;
-            Object.values(networkPlayers).forEach(p => { if (p.userData.role !== 'monster' && !p.userData.isDead) survivorsAlive++; });
+            Object.values(networkPlayers).forEach(p => {
+                if (p.userData.role !== 'monster' && !p.userData.isDead) survivorsAlive++;
+            });
 
             if (survivorsAlive === 0) {
-                broadcast({ type: 'endGame', winner: 'monster' }); showEndScreen('monster');
+                broadcast({ type: 'endGame', winner: 'monster' });
+                showEndScreen('monster');
             } else {
                 document.getElementById('hud').style.display = 'none';
                 document.getElementById('vignette').style.display = 'none';
@@ -324,7 +425,7 @@
                 broadcast({ type: 'playerDied', id: myId, pos: camera.position.toArray(), skin: playerData.skin });
                 createCorpse(playerData.skin, camera.position.toArray());
             }
-        }, killerPosArray ? 1000 : 0); 
+        }, killerPosArray ? 1000 : 0);
     }
 
     function showEndScreen(winner) {
@@ -334,33 +435,43 @@
         document.getElementById('spectator-hud').style.display = 'none';
         document.getElementById('overlay').style.display = 'flex';
 
-        const title = document.getElementById('end-title'); const sub = document.getElementById('end-subtitle');
+        const title = document.getElementById('end-title');
+        const sub = document.getElementById('end-subtitle');
 
         if (winner === 'survivors') {
-            title.innerText = "VOCÊS ESCAPARAM!"; title.style.color = "#00ff00";
+            title.innerText = "VOCÊS ESCAPARAM!";
+            title.style.color = "#00ff00";
             sub.innerText = "Todas as páginas foram coletadas.";
         } else if (winner === 'monster') {
-            title.innerText = "A BRISA VENCEU!"; title.style.color = "#ff0000";
+            title.innerText = "A BRISA VENCEU!";
+            title.style.color = "#ff0000";
             sub.innerText = "Nenhum sobrevivente restou.";
         }
     }
 
-    // === ENGINE 3D ===
     let scene, camera, renderer, controls;
     let colliders = [], mapItems = [], networkPlayers = {}, monsterMesh = null;
     let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false, isRunning = false, canJump = true;
+    let pendingPickupRequests = new Set();
+    let sharedPageCount = 0;
     const velocity = new THREE.Vector3(), direction = new THREE.Vector3();
 
     function processStartGame(data) {
         mapSeed = data.seed;
-        document.getElementById('vignette').style.display = 'block'; 
+        sharedPageCount = 0;
+        pendingPickupRequests.clear();
+        playerData.pages = 0;
+
+        document.getElementById('vignette').style.display = 'block';
         document.getElementById('blood-overlay').style.display = 'block';
         
         if (data.monsterId === myId) {
-            playerData.role = 'monster'; playerData.skin = 'monstro.png'; playerData.flashlightOn = false;
+            playerData.role = 'monster';
+            playerData.skin = 'monstro.png';
+            playerData.flashlightOn = false;
             showBigWarning("CACE OS SOBREVIVENTES ANTES QUE ELES ENCONTREM AS 8 PÁGINAS!", 6000);
             document.getElementById('box-battery').style.display = 'none';
-            document.getElementById('minimap-container').style.display = 'none'; 
+            document.getElementById('minimap-container').style.display = 'none';
             document.getElementById('monster-skills').style.display = 'block';
         } else {
             showBigWarning("VOCÊ É UM SOBREVIVENTE\nCOLETE AS 8 PÁGINAS!", 6000);
@@ -370,40 +481,51 @@
         document.getElementById('hud').style.display = 'block';
         document.getElementById('game-container').style.display = 'block';
         
-        init3D(); generateMap(); updateHUD(); animate();
+        init3D();
+        generateMap();
+        updateHUD();
+        animate();
         
         const canvas = document.getElementById('game-container');
-        canvas.addEventListener('click', () => { 
-            if(!controls.isLocked && document.getElementById('overlay').style.display !== 'flex' && !playerData.isDead) {
-                controls.lock(); 
+        canvas.addEventListener('click', () => {
+            if (!controls.isLocked && document.getElementById('overlay').style.display !== 'flex' && !playerData.isDead) {
+                controls.lock();
             }
         });
         
         setInterval(() => {
             if (!controls || !camera) return;
             broadcast({
-                type: 'update', id: myId, name: playerData.name, skin: playerData.skin, role: playerData.role,
+                type: 'update',
+                id: myId,
+                name: playerData.name,
+                skin: playerData.skin,
+                role: playerData.role,
                 pos: [camera.position.x, camera.position.y, camera.position.z],
-                rot: [camera.rotation.x, camera.rotation.y, camera.rotation.z], 
-                flash: playerData.flashlightOn, invisible: (mSkills.i.active > 0), isDead: playerData.isDead, crouch: isCrouching
+                rot: [camera.rotation.x, camera.rotation.y, camera.rotation.z],
+                flash: playerData.flashlightOn,
+                invisible: (mSkills.i.active > 0),
+                isDead: playerData.isDead,
+                crouch: isCrouching
             });
         }, 50);
     }
 
     function init3D() {
-        scene = new THREE.Scene(); scene.background = new THREE.Color(0x010103);
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x010103);
         scene.add(footprintGroup);
 
         camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 150);
         
         if (playerData.role === 'monster') {
-            scene.fog = new THREE.FogExp2(0x0a0a10, 0.012); 
-            scene.add(new THREE.AmbientLight(0x505070, 1.2)); 
+            scene.fog = new THREE.FogExp2(0x0a0a10, 0.012);
+            scene.add(new THREE.AmbientLight(0x505070, 1.2));
             camera.position.set(120, 2, 120);
         } else {
-            scene.fog = new THREE.FogExp2(0x050508, 0.015); 
-            scene.add(new THREE.AmbientLight(0x404050, 1.8)); 
-            camera.position.set(0, 2, 0); 
+            scene.fog = new THREE.FogExp2(0x050508, 0.015);
+            scene.add(new THREE.AmbientLight(0x404050, 1.8));
+            camera.position.set(0, 2, 0);
         }
 
         renderer = new THREE.WebGLRenderer({ antialias: false });
@@ -412,56 +534,75 @@
 
         controls = new THREE.PointerLockControls(camera, document.body);
 
-        flashlight = new THREE.SpotLight(0xfffae6, 6.0, 150, Math.PI / 3.0, 0.5, 1.0);
-        flashlight.position.set(0, -0.2, 0); flashlight.target.position.set(0, 0, -1);
-        camera.add(flashlight); camera.add(flashlight.target); scene.add(camera);
-        if(playerData.role === 'monster') flashlight.intensity = 0;
+        flashlight = new THREE.SpotLight(0xfffae6, 16.0, 260, Math.PI / 2.6, 0.45, 0.8);
+        flashlight.position.set(0, -0.2, 0);
+        flashlight.target.position.set(0, 0, -1);
+        camera.add(flashlight);
+        camera.add(flashlight.target);
+        scene.add(camera);
+        if (playerData.role === 'monster') flashlight.intensity = 0;
 
         let rainGeoBuf = new THREE.BufferGeometry();
         let rainPos = new Float32Array(rainCount * 3);
-        for(let i=0;i<rainCount;i++) {
-           rainPos[i*3] = Math.random()*200 - 100;
-           rainPos[i*3+1] = Math.random()*100;
-           rainPos[i*3+2] = Math.random()*200 - 100;
+        for (let i = 0; i < rainCount; i++) {
+            rainPos[i*3] = Math.random() * 200 - 100;
+            rainPos[i*3+1] = Math.random() * 100;
+            rainPos[i*3+2] = Math.random() * 200 - 100;
         }
         rainGeoBuf.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
-        let rainMat = new THREE.PointsMaterial({color: 0x8888aa, size: 0.15, transparent: true, opacity: 0.25});
+        let rainMat = new THREE.PointsMaterial({ color: 0x8888aa, size: 0.15, transparent: true, opacity: 0.25 });
         rainGeo = new THREE.Points(rainGeoBuf, rainMat);
         scene.add(rainGeo);
 
         setupControls();
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         });
     }
 
     function generateMap() {
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshStandardMaterial({ color: 0x111611, roughness: 1.0 }));
-        floor.rotation.x = -Math.PI / 2; scene.add(floor);
+        const floor = new THREE.Mesh(
+            new THREE.PlaneGeometry(300, 300),
+            new THREE.MeshStandardMaterial({ color: 0x111611, roughness: 1.0 })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
 
-        const trunkGeo = new THREE.CylinderGeometry(1, 1.5, 15, 6); const trunkMat = new THREE.MeshStandardMaterial({ color: 0x1a120b, roughness: 1.0 });
-        const leavesGeo = new THREE.ConeGeometry(6, 15, 6); const leavesMat = new THREE.MeshStandardMaterial({ color: 0x051206, roughness: 1.0 });
+        const trunkGeo = new THREE.CylinderGeometry(1, 1.5, 15, 6);
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x1a120b, roughness: 1.0 });
+        const leavesGeo = new THREE.ConeGeometry(6, 15, 6);
+        const leavesMat = new THREE.MeshStandardMaterial({ color: 0x051206, roughness: 1.0 });
 
-        for (let i = 0; i < 200; i++) { 
+        for (let i = 0; i < 200; i++) {
             const treeGroup = new THREE.Group();
-            const scale = 0.8 + rng() * 0.7; 
+            const scale = 0.8 + rng() * 0.7;
             
-            const trunk = new THREE.Mesh(trunkGeo, trunkMat); 
-            trunk.position.y = 7.5 * scale; trunk.scale.set(scale, scale, scale); treeGroup.add(trunk);
-            const leaves = new THREE.Mesh(leavesGeo, leavesMat); 
-            leaves.position.y = 17 * scale; leaves.scale.set(scale, scale, scale); treeGroup.add(leaves);
+            const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+            trunk.position.y = 7.5 * scale;
+            trunk.scale.set(scale, scale, scale);
+            treeGroup.add(trunk);
 
-            const px = rng() * 280 - 140; const pz = rng() * 280 - 140;
-            if (Math.abs(px) < 15 && Math.abs(pz) < 15) continue; 
-            if (Math.abs(px - 120) < 15 && Math.abs(pz - 120) < 15) continue; 
-            if (pz > 15 && pz < 45) continue; 
+            const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+            leaves.position.y = 17 * scale;
+            leaves.scale.set(scale, scale, scale);
+            treeGroup.add(leaves);
 
-            treeGroup.position.set(px, 0, pz); scene.add(treeGroup);
+            const px = rng() * 280 - 140;
+            const pz = rng() * 280 - 140;
+            if (Math.abs(px) < 15 && Math.abs(pz) < 15) continue;
+            if (Math.abs(px - 120) < 15 && Math.abs(pz - 120) < 15) continue;
+            if (pz > 15 && pz < 45) continue;
+
+            treeGroup.position.set(px, 0, pz);
+            scene.add(treeGroup);
             colliders.push({ type: 'tree', x: px, z: pz, radius: 2.0 * scale });
 
-            if(rng() > 0.5) {
+            if (rng() > 0.5) {
                 const bush = new THREE.Mesh(new THREE.DodecahedronGeometry(1.5 * scale), leavesMat);
-                bush.position.set(px + (rng()*4 - 2), 0.5, pz + (rng()*4 - 2)); scene.add(bush);
+                bush.position.set(px + (rng() * 4 - 2), 0.5, pz + (rng() * 4 - 2));
+                scene.add(bush);
             }
         }
         
@@ -472,34 +613,47 @@
             const scale = 0.5 + rng() * 1.5;
             rock.scale.set(scale, scale * 0.6, scale);
             
-            const px = rng() * 280 - 140; const pz = rng() * 280 - 140;
-            if (Math.abs(px) < 15 && Math.abs(pz) < 15) continue; 
-            if (Math.abs(px - 120) < 15 && Math.abs(pz - 120) < 15) continue; 
-            if (pz > 15 && pz < 45) continue; 
+            const px = rng() * 280 - 140;
+            const pz = rng() * 280 - 140;
+            if (Math.abs(px) < 15 && Math.abs(pz) < 15) continue;
+            if (Math.abs(px - 120) < 15 && Math.abs(pz - 120) < 15) continue;
+            if (pz > 15 && pz < 45) continue;
             
-            rock.position.set(px, scale * 0.5, pz); rock.rotation.y = rng() * Math.PI; scene.add(rock);
+            rock.position.set(px, scale * 0.5, pz);
+            rock.rotation.y = rng() * Math.PI;
+            scene.add(rock);
             
-            const rockTop = (scale * 0.5) + (1.5 * scale * 0.6); 
+            const rockTop = (scale * 0.5) + (1.5 * scale * 0.6);
             colliders.push({ type: 'rock', x: px, z: pz, radius: 1.5 * scale, topY: rockTop });
         }
         
-        // PONTOS DE REFERÊNCIA (LANDMARKS)
         const bridge = new THREE.Mesh(new THREE.BoxGeometry(8, 0.5, 22), new THREE.MeshStandardMaterial({ color: 0x2b1d0f }));
-        bridge.position.set(0, 0.3, 30); scene.add(bridge);
+        bridge.position.set(0, 0.3, 30);
+        scene.add(bridge);
         
         const campfireMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-        for(let j=0; j<8; j++) {
+        for (let j = 0; j < 8; j++) {
             const stone = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.5), campfireMat);
-            stone.position.set(40 + Math.cos(j)*1.5, 0.2, -40 + Math.sin(j)*1.5);
+            stone.position.set(40 + Math.cos(j) * 1.5, 0.2, -40 + Math.sin(j) * 1.5);
             scene.add(stone);
         }
         const fireLight = new THREE.PointLight(0xff6600, 2.0, 15);
-        fireLight.position.set(40, 1, -40); scene.add(fireLight);
+        fireLight.position.set(40, 1, -40);
+        scene.add(fireLight);
         
         const woodMat = new THREE.MeshStandardMaterial({ color: 0x1f140a });
-        const cab1 = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 1), woodMat); cab1.position.set(-60, 4, -65); scene.add(cab1);
-        const cab2 = new THREE.Mesh(new THREE.BoxGeometry(1, 8, 10), woodMat); cab2.position.set(-65, 4, -60); scene.add(cab2);
-        const cab3 = new THREE.Mesh(new THREE.BoxGeometry(1, 8, 10), woodMat); cab3.position.set(-55, 4, -60); scene.add(cab3);
+        const cab1 = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 1), woodMat);
+        cab1.position.set(-60, 4, -65);
+        scene.add(cab1);
+
+        const cab2 = new THREE.Mesh(new THREE.BoxGeometry(1, 8, 10), woodMat);
+        cab2.position.set(-65, 4, -60);
+        scene.add(cab2);
+
+        const cab3 = new THREE.Mesh(new THREE.BoxGeometry(1, 8, 10), woodMat);
+        cab3.position.set(-55, 4, -60);
+        scene.add(cab3);
+
         colliders.push({ type: 'tree', x: -60, z: -65, radius: 5 });
         colliders.push({ type: 'tree', x: -65, z: -60, radius: 5 });
         colliders.push({ type: 'tree', x: -55, z: -60, radius: 5 });
@@ -507,30 +661,36 @@
         const riverGeo = new THREE.PlaneGeometry(300, 20);
         const riverMat = new THREE.MeshStandardMaterial({ color: 0x0f2a3a, transparent: true, opacity: 0.85, roughness: 0.2, metalness: 0.5 });
         const river = new THREE.Mesh(riverGeo, riverMat);
-        river.rotation.x = -Math.PI / 2; river.position.set(0, 0.05, 30); scene.add(river);
+        river.rotation.x = -Math.PI / 2;
+        river.position.set(0, 0.05, 30);
+        scene.add(river);
 
         spawnItemsLocally();
         if (isHost && gameMode === 'pve') spawnMonsterAI();
     }
 
-    // ATUALIZADO: Spawna blocos verdes (speedblock)
     function spawnItemsLocally() {
         let idCounter = 0;
-        for(let i=0; i<15; i++) createItem(idCounter++, 'battery', null, rng()*200-100, rng()*200-100);
-        for(let i=0; i<5; i++) createItem(idCounter++, 'taser', null, rng()*200-100, rng()*200-100);
-        for(let i=0; i<8; i++) createItem(idCounter++, 'page', null, rng()*200-100, rng()*200-100);
-        for(let i=0; i<4; i++) createItem(idCounter++, 'medkit', null, rng()*200-100, rng()*200-100);
-        for(let i=0; i<4; i++) createItem(idCounter++, 'speedblock', null, rng()*200-100, rng()*200-100);
+
+        for (let i = 0; i < 60; i++) createItem(idCounter++, 'battery', null, rng()*200-100, rng()*200-100);
+        for (let i = 0; i < 25; i++) createItem(idCounter++, 'taser', null, rng()*200-100, rng()*200-100);
+        for (let i = 0; i < 8; i++) createItem(idCounter++, 'page', null, rng()*200-100, rng()*200-100);
+        for (let i = 0; i < 25; i++) createItem(idCounter++, 'medkit', null, rng()*200-100, rng()*200-100);
+        for (let i = 0; i < 25; i++) createItem(idCounter++, 'speedblock', null, rng()*200-100, rng()*200-100);
     }
 
-    // ATUALIZADO: Criação do speedblock
     function createItem(id, type, color, x, z) {
         let mesh;
-        if(type === 'page') {
+        if (type === 'page') {
             const geo = new THREE.PlaneGeometry(1, 1.5);
             const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-            new THREE.TextureLoader().load('pagina.jpg', tex => { mat.map = tex; mat.needsUpdate = true; });
-            mesh = new THREE.Mesh(geo, mat); mesh.position.set(x, 2, z); mesh.rotation.y = rng() * Math.PI;
+            new THREE.TextureLoader().load('pagina.jpg', tex => {
+                mat.map = tex;
+                mat.needsUpdate = true;
+            });
+            mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, 2, z);
+            mesh.rotation.y = rng() * Math.PI;
         } else if (type === 'speedblock') {
             const geo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
             const mat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.6 });
@@ -538,71 +698,99 @@
             mesh.position.set(x, 1, z);
         } else {
             let texName = '';
-            if(type === 'battery') texName = 'pilha.png';
-            else if(type === 'taser') texName = 'taser.png';
-            else if(type === 'medkit') texName = 'cura.png';
+            if (type === 'battery') texName = 'pilha.png';
+            else if (type === 'taser') texName = 'taser.png';
+            else if (type === 'medkit') texName = 'cura.png';
 
             const mat = new THREE.SpriteMaterial({ color: 0xffffff });
-            new THREE.TextureLoader().load(texName, tex => { mat.map = tex; mat.needsUpdate = true; });
-            mesh = new THREE.Sprite(mat); mesh.scale.set(1.5, 1.5, 1); mesh.position.set(x, 1, z); 
+            new THREE.TextureLoader().load(texName, tex => {
+                mat.map = tex;
+                mat.needsUpdate = true;
+            });
+            mesh = new THREE.Sprite(mat);
+            mesh.scale.set(1.5, 1.5, 1);
+            mesh.position.set(x, 1, z);
         }
-        scene.add(mesh); mapItems.push({ id, type, mesh, active: true, x, z });
+        scene.add(mesh);
+        mapItems.push({ id, type, mesh, active: true, x, z });
     }
 
     function createCorpse(skin, pos) {
         const mat = new THREE.MeshStandardMaterial({ color: 0x666666 });
-        new THREE.TextureLoader().load(skin, tex => { mat.map = tex; mat.needsUpdate = true; });
+        new THREE.TextureLoader().load(skin, tex => {
+            mat.map = tex;
+            mat.needsUpdate = true;
+        });
         const corpse = new THREE.Mesh(new THREE.BoxGeometry(2, 4, 2), mat);
-        corpse.position.fromArray(pos); corpse.position.y = 1; corpse.rotation.x = -Math.PI / 2;
+        corpse.position.fromArray(pos);
+        corpse.position.y = 1;
+        corpse.rotation.x = -Math.PI / 2;
         scene.add(corpse);
     }
 
-    // ATUALIZADO: Taser com munição
     function setupControls() {
         document.addEventListener('keydown', (e) => {
-            if(playerData.isDead || playerData.stunTimer > 0) return;
+            if (playerData.isDead || playerData.stunTimer > 0) return;
             switch (e.code) {
-                case 'KeyW': moveForward = true; break; case 'KeyA': moveLeft = true; break;
-                case 'KeyS': moveBackward = true; break; case 'KeyD': moveRight = true; break;
-                case 'ShiftLeft': case 'ShiftRight': isRunning = true; break;
-                case 'KeyQ': isCrouching = true; targetHeight = 1.0; break; 
-                case 'Space': if(canJump && !isCrouching) { velocity.y += 35; canJump = false; } break;
-                case 'KeyF': 
-                    if(playerData.role === 'survivor' && playerData.flashlightBattery > 0) {
+                case 'KeyW': moveForward = true; break;
+                case 'KeyA': moveLeft = true; break;
+                case 'KeyS': moveBackward = true; break;
+                case 'KeyD': moveRight = true; break;
+                case 'ShiftLeft':
+                case 'ShiftRight': isRunning = true; break;
+                case 'KeyQ': isCrouching = true; targetHeight = 1.0; break;
+                case 'Space':
+                    if (canJump && !isCrouching) {
+                        velocity.y += 35;
+                        canJump = false;
+                    }
+                    break;
+                case 'KeyF':
+                    if (playerData.role === 'survivor' && playerData.flashlightBattery > 0) {
                         playerData.flashlightOn = !playerData.flashlightOn;
-                        flashlight.intensity = playerData.flashlightOn ? 6.0 : 0;
+                        flashlight.intensity = playerData.flashlightOn ? 16.0 : 0;
                     } else if (playerData.role === 'monster' && mSkills.f.cd <= 0 && mSkills.f.active <= 0) {
-                        mSkills.f.active = mSkills.f.maxActive; activateXRay();
+                        mSkills.f.active = mSkills.f.maxActive;
+                        activateXRay();
                     }
                     break;
-                case 'KeyR': 
-                    if(playerData.role === 'monster' && mSkills.r.cd <= 0 && mSkills.r.active <= 0) {
-                        mSkills.r.active = mSkills.r.maxActive; showMessage("CORRIDA DA BRISA!");
+                case 'KeyR':
+                    if (playerData.role === 'monster' && mSkills.r.cd <= 0 && mSkills.r.active <= 0) {
+                        mSkills.r.active = mSkills.r.maxActive;
+                        showMessage("CORRIDA DA BRISA!");
                     }
                     break;
-                case 'KeyI': 
-                    if(playerData.role === 'monster' && mSkills.i.cd <= 0 && mSkills.i.active <= 0) {
-                        mSkills.i.active = mSkills.i.maxActive; document.getElementById('invis-warning').style.display = 'block'; 
+                case 'KeyI':
+                    if (playerData.role === 'monster' && mSkills.i.cd <= 0 && mSkills.i.active <= 0) {
+                        mSkills.i.active = mSkills.i.maxActive;
+                        document.getElementById('invis-warning').style.display = 'block';
                     }
                     break;
             }
         });
+
         document.addEventListener('keyup', (e) => {
             switch (e.code) {
-                case 'KeyW': moveForward = false; break; case 'KeyA': moveLeft = false; break;
-                case 'KeyS': moveBackward = false; break; case 'KeyD': moveRight = false; break;
-                case 'ShiftLeft': case 'ShiftRight': isRunning = false; break;
+                case 'KeyW': moveForward = false; break;
+                case 'KeyA': moveLeft = false; break;
+                case 'KeyS': moveBackward = false; break;
+                case 'KeyD': moveRight = false; break;
+                case 'ShiftLeft':
+                case 'ShiftRight': isRunning = false; break;
                 case 'KeyQ': isCrouching = false; targetHeight = 2.0; break;
             }
         });
         
         document.addEventListener('mousedown', (e) => {
-            if(!controls.isLocked) return;
+            if (!controls.isLocked) return;
             
-            if(playerData.isDead && e.button === 0) { specIndex++; return; }
-            if(playerData.stunTimer > 0) return;
+            if (playerData.isDead && e.button === 0) {
+                specIndex++;
+                return;
+            }
+            if (playerData.stunTimer > 0) return;
             
-            if(playerData.role === 'survivor' && playerData.inventory === 'taser' && e.button === 0) {
+            if (playerData.role === 'survivor' && playerData.inventory === 'taser' && e.button === 0) {
                 if (playerData.taserAmmo > 0) {
                     playerData.taserAmmo--;
                     showMessage(`TASER DISPARADO! (${playerData.taserAmmo} restantes)`);
@@ -610,43 +798,114 @@
                     if (playerData.taserAmmo <= 0) playerData.inventory = null;
                     updateHUD();
                     
-                    const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+                    const dir = new THREE.Vector3();
+                    camera.getWorldDirection(dir);
                     broadcast({ type: 'taserFired', pos: camera.position.toArray(), dir: dir.toArray() });
                     
-                    if(isHost && gameMode === 'pve' && monsterMesh && monsterMesh.visible) {
+                    if (isHost && gameMode === 'pve' && monsterMesh && monsterMesh.visible) {
                         const toMonster = new THREE.Vector3().subVectors(monsterMesh.position, camera.position);
-                        if(toMonster.length() < 25 && dir.dot(toMonster.normalize()) > 0.8) {
-                            monsterAIState.stunTimer = 1.0; showMessage("A BRISA FOI PARALISADA!");
+                        if (toMonster.length() < 25 && dir.dot(toMonster.normalize()) > 0.8) {
+                            monsterAIState.stunTimer = 1.0;
+                            showMessage("A BRISA FOI PARALISADA!");
                         }
                     }
                 }
             }
             
-            if(playerData.role === 'monster' && e.button === 0) {
+            if (playerData.role === 'monster' && e.button === 0) {
                 document.getElementById('hearts').style.transform = "scale(1.5)";
-                setTimeout(()=> document.getElementById('hearts').style.transform = "scale(1)", 150);
+                setTimeout(() => document.getElementById('hearts').style.transform = "scale(1)", 150);
                 broadcast({ type: 'monsterAttack', pos: camera.position.toArray() });
             }
         });
     }
 
-    // ATUALIZADO: Lógica de pickup de itens (speedblock e taser ammo)
     function checkItems() {
-        if(playerData.role === 'monster') return; 
+        if (playerData.role === 'monster') return;
 
         for (let item of mapItems) {
             if (!item.active) continue;
-            if (Math.hypot(camera.position.x - item.x, camera.position.z - item.z) < 2.0) { 
-                item.active = false; item.mesh.visible = false;
-                
-                if (item.type === 'battery') { playerData.flashlightBattery = 100; showMessage("Bateria Recarregada!"); } 
-                else if (item.type === 'taser') { playerData.taserAmmo = 3; playerData.inventory = 'taser'; showMessage("Pegou Taser! (3 Tiros)"); } 
-                else if (item.type === 'medkit') { playerData.health = Math.min(8, playerData.health + 2); showMessage("Curou 1 Coração!"); } 
-                else if (item.type === 'speedblock') { playerData.speedBoostTimer = 10.0; showMessage("SUPER VELOCIDADE ATIVADA!"); }
-                
-                // Trata as páginas na rede, então manda o evento pra geral
-                broadcast({ type: 'itemPicked', itemId: item.id }); updateHUD();
+            if (Math.hypot(camera.position.x - item.x, camera.position.z - item.z) >= 2.0) continue;
+
+            if (gameMode === 'pvp') {
+                if (!isHost) {
+                    if (!pendingPickupRequests.has(item.id)) {
+                        pendingPickupRequests.add(item.id);
+                        const hostConn = connections[Object.keys(connections)[0]];
+                        if (hostConn && hostConn.open) {
+                            hostConn.send({ type: 'requestItemPickup', itemId: item.id });
+                        }
+                    }
+                    return;
+                }
+
+                confirmItemPickup(item.id);
+                return;
             }
+
+            item.active = false;
+            item.mesh.visible = false;
+                
+            if (item.type === 'battery') {
+                playerData.flashlightBattery = 100;
+                showMessage("Bateria Recarregada!");
+            } else if (item.type === 'taser') {
+                playerData.taserAmmo = 3;
+                playerData.inventory = 'taser';
+                showMessage("Pegou Taser! (3 Tiros)");
+            } else if (item.type === 'medkit') {
+                playerData.health = Math.min(8, playerData.health + 2);
+                showMessage("Curou 1 Coração!");
+            } else if (item.type === 'speedblock') {
+                playerData.speedBoostTimer = 10.0;
+                showMessage("SUPER VELOCIDADE ATIVADA!");
+            } else if (item.type === 'page') {
+                playerData.pages++;
+                showMessage(`Página ${playerData.pages}/8 Coletada!`);
+                if (playerData.pages >= 8) {
+                    broadcast({ type: 'endGame', winner: 'survivors' });
+                    showEndScreen('survivors');
+                }
+            }
+                
+            broadcast({ type: 'itemPicked', itemId: item.id, itemType: item.type });
+            updateHUD();
+            return;
+        }
+    }
+
+    function confirmItemPickup(itemId) {
+        const item = mapItems.find(i => i.id === itemId);
+        if (!item || !item.active) return;
+
+        item.active = false;
+        item.mesh.visible = false;
+
+        if (item.type === 'battery') {
+            playerData.flashlightBattery = 100;
+            showMessage("Bateria Recarregada!");
+        } else if (item.type === 'taser') {
+            playerData.taserAmmo = 3;
+            playerData.inventory = 'taser';
+            showMessage("Pegou Taser! (3 Tiros)");
+        } else if (item.type === 'medkit') {
+            playerData.health = Math.min(8, playerData.health + 2);
+            showMessage("Curou 1 Coração!");
+        } else if (item.type === 'speedblock') {
+            playerData.speedBoostTimer = 10.0;
+            showMessage("SUPER VELOCIDADE ATIVADA!");
+        } else if (item.type === 'page') {
+            sharedPageCount++;
+            playerData.pages = sharedPageCount;
+            showMessage(`Página ${sharedPageCount}/8 Coletada pela Equipe!`);
+        }
+
+        updateHUD();
+        broadcast({ type: 'itemPickedConfirmed', itemId, itemType: item.type, sharedPageCount });
+
+        if (item.type === 'page' && sharedPageCount >= 8) {
+            broadcast({ type: 'endGame', winner: 'survivors' });
+            showEndScreen('survivors');
         }
     }
 
@@ -656,11 +915,12 @@
         return `(Pronto)`;
     }
 
-    // ATUALIZADO: Mostra munição do taser
     function updateHUD() {
-        if(playerData.isDead) return;
+        if (playerData.isDead) return;
 
-        let hText = ''; for(let i=0; i<Math.ceil(playerData.health/2); i++) hText += '❤️';
+        let hText = '';
+        for (let i = 0; i < Math.ceil(playerData.health / 2); i++) hText += '❤️';
+
         document.getElementById('hearts').innerText = hText;
         document.getElementById('stamina-bar').style.width = playerData.stamina + '%';
         document.getElementById('battery-bar').style.width = playerData.flashlightBattery + '%';
@@ -670,7 +930,7 @@
         if (playerData.inventory === 'taser') invText = `🔫 Taser (${playerData.taserAmmo})`;
         document.getElementById('inventory').innerText = `Arma: ${invText}`;
 
-        if(playerData.role === 'monster') {
+        if (playerData.role === 'monster') {
             document.getElementById('pages').innerText = 'OBJETIVO: CAÇAR';
             document.getElementById('hearts').innerText = '💀 A BRISA';
             document.getElementById('inventory').innerText = 'M1: Atacar';
@@ -685,7 +945,8 @@
 
     function showMessage(txt) {
         const msgEl = document.getElementById('messages');
-        msgEl.innerText = txt; msgEl.style.opacity = 1;
+        msgEl.innerText = txt;
+        msgEl.style.opacity = 1;
         setTimeout(() => msgEl.style.opacity = 0, 3000);
     }
 
@@ -698,146 +959,227 @@
 
         const cx = 75, cy = 75, scale = 0.5;
 
-        ctx.fillStyle = '#ff0000'; ctx.font = 'bold 14px Arial'; ctx.fillText('N', cx - 5, 15);
-        ctx.fillStyle = '#00ff00'; ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#ff0000';
+        ctx.font = 'bold 14px Arial';
+        ctx.fillText('N', cx - 5, 15);
+
+        ctx.fillStyle = '#00ff00';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+        ctx.fill();
 
         Object.values(networkPlayers).forEach(mesh => {
             if (mesh.userData.role === 'survivor' && !mesh.userData.isDead) {
-                const dx = mesh.position.x - camera.position.x; const dz = mesh.position.z - camera.position.z;
-                const mapX = cx + dx * scale; const mapY = cy + dz * scale;
+                const dx = mesh.position.x - camera.position.x;
+                const dz = mesh.position.z - camera.position.z;
+                const mapX = cx + dx * scale;
+                const mapY = cy + dz * scale;
                 if (mapX > 0 && mapX < 150 && mapY > 0 && mapY < 150) {
-                    ctx.fillStyle = '#0088ff'; ctx.beginPath(); ctx.arc(mapX, mapY, 4, 0, Math.PI*2); ctx.fill();
-                    ctx.font = '10px Arial'; ctx.fillStyle = '#fff'; ctx.fillText(mesh.userData.name, mapX + 6, mapY + 4);
+                    ctx.fillStyle = '#0088ff';
+                    ctx.beginPath();
+                    ctx.arc(mapX, mapY, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.font = '10px Arial';
+                    ctx.fillStyle = '#fff';
+                    ctx.fillText(mesh.userData.name, mapX + 6, mapY + 4);
                 }
             }
         });
     }
 
-    // ATUALIZADO: Progresso compartilhado das páginas
     function handleNetworkData(senderId, data) {
-        const relayTypes = ['update', 'itemPicked', 'playerDied', 'monsterAttack', 'taserFired'];
+        const relayTypes = ['update', 'playerDied', 'monsterAttack', 'taserFired'];
         if (isHost && relayTypes.includes(data.type)) {
             Object.values(connections).forEach(conn => {
                 if (conn.peer !== senderId && conn.open) conn.send(data);
             });
         }
 
-        if (data.type === 'requestInfo') { broadcast({ type: 'lobbyInfo', player: { id: myId, name: playerData.name, skin: playerData.skin } }); } 
-        else if (data.type === 'lobbyInfo' && isHost) {
-            if(!lobbyPlayers.find(p => p.id === data.player.id)) { 
-                lobbyPlayers.push(data.player); updateWaitingRoomUI(); broadcast({ type: 'syncLobby', players: lobbyPlayers }); 
+        if (data.type === 'requestInfo') {
+            broadcast({ type: 'lobbyInfo', player: { id: myId, name: playerData.name, skin: playerData.skin } });
+        } else if (data.type === 'lobbyInfo' && isHost) {
+            if (!lobbyPlayers.find(p => p.id === data.player.id)) {
+                lobbyPlayers.push(data.player);
+                updateWaitingRoomUI();
+                broadcast({ type: 'syncLobby', players: lobbyPlayers });
             }
-        }
-        else if (data.type === 'syncLobby') { lobbyPlayers = data.players; updateWaitingRoomUI(); }
-        else if (data.type === 'start') processStartGame(data);
-        else if (data.type === 'endGame') showEndScreen(data.winner);
-        else if (data.type === 'brisaSpawned' && playerData.role !== 'monster') showBigWarning("A BRISA ESTÁ ATRÁS DE VOCÊ!", 3000);
-        
-        else if (data.type === 'itemPicked') {
+        } else if (data.type === 'syncLobby') {
+            lobbyPlayers = data.players;
+            updateWaitingRoomUI();
+        } else if (data.type === 'start') {
+            processStartGame(data);
+        } else if (data.type === 'endGame') {
+            showEndScreen(data.winner);
+        } else if (data.type === 'brisaSpawned' && playerData.role !== 'monster') {
+            showBigWarning("A BRISA ESTÁ ATRÁS DE VOCÊ!", 3000);
+        } else if (data.type === 'requestItemPickup' && isHost && gameMode === 'pvp') {
             const item = mapItems.find(i => i.id === data.itemId);
-            if(item) { 
-                item.active = false; item.mesh.visible = false; 
-                // === FIX PROGRESSO COOPERATIVO ===
-                if (item.type === 'page' && playerData.role !== 'monster') {
-                    playerData.pages++; 
-                    showMessage(`Página ${playerData.pages}/8 Coletada pela Equipe!`);
+            const senderMesh = networkPlayers[senderId];
+
+            if (!item || !item.active || !senderMesh) return;
+
+            const dist = Math.hypot(senderMesh.position.x - item.x, senderMesh.position.z - item.z);
+            if (dist < 2.0) {
+                confirmItemPickup(item.id);
+            }
+        } else if (data.type === 'itemPicked') {
+            const item = mapItems.find(i => i.id === data.itemId);
+            if (item) {
+                item.active = false;
+                item.mesh.visible = false;
+                if (data.itemType === 'page' && playerData.role !== 'monster') {
+                    playerData.pages++;
+                    showMessage(`Página ${playerData.pages}/8 Coletada!`);
                     updateHUD();
-                    if(playerData.pages >= 8) {
-                        broadcast({ type: 'endGame', winner: 'survivors' }); 
+                    if (playerData.pages >= 8) {
+                        broadcast({ type: 'endGame', winner: 'survivors' });
                         showEndScreen('survivors');
                     }
                 }
             }
-        }
-        
-        else if (data.type === 'playerDied') {
+        } else if (data.type === 'itemPickedConfirmed') {
+            const item = mapItems.find(i => i.id === data.itemId);
+            if (item) {
+                item.active = false;
+                item.mesh.visible = false;
+            }
+
+            pendingPickupRequests.delete(data.itemId);
+
+            if (data.itemType === 'page' && playerData.role !== 'monster') {
+                sharedPageCount = data.sharedPageCount;
+                playerData.pages = sharedPageCount;
+                showMessage(`Página ${sharedPageCount}/8 Coletada pela Equipe!`);
+            }
+
+            updateHUD();
+        } else if (data.type === 'playerDied') {
             createCorpse(data.skin, data.pos);
-            if(networkPlayers[data.id]) { networkPlayers[data.id].userData.isDead = true; networkPlayers[data.id].visible = false; }
-            if(isHost) checkGameOverState();
-        }
-        else if (data.type === 'monsterAttack' && playerData.role !== 'monster' && !playerData.isDead) {
+            if (networkPlayers[data.id]) {
+                networkPlayers[data.id].userData.isDead = true;
+                networkPlayers[data.id].visible = false;
+            }
+            if (isHost) checkGameOverState();
+        } else if (data.type === 'monsterAttack' && playerData.role !== 'monster' && !playerData.isDead) {
             const mPos = new THREE.Vector3().fromArray(data.pos);
-            if (camera.position.distanceTo(mPos) < 4.0) { // ATUALIZADO: Hitbox do monstro de 5.0 pra 4.0
-                playerData.health -= 2; showMessage("A BRISA TE ATACOU! (-1 Coração)");
+            if (camera.position.distanceTo(mPos) < 4.0) {
+                playerData.health -= 2;
+                showMessage("A BRISA TE ATACOU! (-1 Coração)");
                 
-                const blood = document.getElementById('blood-overlay'); blood.style.opacity = 1; setTimeout(() => blood.style.opacity = 0, 500);
-                const heartsUi = document.getElementById('hearts'); heartsUi.style.transform = "scale(1.5) translateX(10px)"; heartsUi.style.color = "#ff0000";
-                setTimeout(() => { heartsUi.style.transform = "scale(1)"; heartsUi.style.color = "#fff"; }, 200);
+                const blood = document.getElementById('blood-overlay');
+                blood.style.opacity = 1;
+                setTimeout(() => blood.style.opacity = 0, 500);
+
+                const heartsUi = document.getElementById('hearts');
+                heartsUi.style.transform = "scale(1.5) translateX(10px)";
+                heartsUi.style.color = "#ff0000";
+                setTimeout(() => {
+                    heartsUi.style.transform = "scale(1)";
+                    heartsUi.style.color = "#fff";
+                }, 200);
                 
                 updateHUD();
                 const knockback = new THREE.Vector3().subVectors(camera.position, mPos).normalize().multiplyScalar(15);
                 camera.position.add(knockback);
                 
-                if(playerData.health <= 0) triggerDeath(data.pos); 
+                if (playerData.health <= 0) triggerDeath(data.pos);
             }
-        }
-        else if (data.type === 'taserFired' && playerData.role === 'monster') {
-            const shooterPos = new THREE.Vector3().fromArray(data.pos); const shooterDir = new THREE.Vector3().fromArray(data.dir);
+        } else if (data.type === 'taserFired' && playerData.role === 'monster') {
+            const shooterPos = new THREE.Vector3().fromArray(data.pos);
+            const shooterDir = new THREE.Vector3().fromArray(data.dir);
             const toMe = new THREE.Vector3().subVectors(camera.position, shooterPos);
-            if(toMe.length() < 25 && shooterDir.dot(toMe.normalize()) > 0.8) { playerData.stunTimer = 1.0; showMessage("VOCÊ FOI PARALISADO PELO TASER!"); }
-        }
-        else if (data.type === 'update') {
+            if (toMe.length() < 25 && shooterDir.dot(toMe.normalize()) > 0.8) {
+                playerData.stunTimer = 1.0;
+                showMessage("VOCÊ FOI PARALISADO PELO TASER!");
+            }
+        } else if (data.type === 'update') {
             if (!networkPlayers[data.id]) {
-                const mat = new THREE.MeshStandardMaterial({ color: 0x888888 }); 
-                new THREE.TextureLoader().load(data.skin, tex => { mat.map = tex; mat.needsUpdate = true; });
+                const mat = new THREE.MeshStandardMaterial({ color: 0x888888 });
+                new THREE.TextureLoader().load(data.skin, tex => {
+                    mat.map = tex;
+                    mat.needsUpdate = true;
+                });
+
                 const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 4, 2), mat);
                 mesh.userData = { name: data.name, role: data.role, isDead: data.isDead, crouch: false };
                 
-                const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
-                ctx.font = "Bold 40px Arial"; ctx.fillStyle = "white"; ctx.fillText(data.name, 0, 40);
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                ctx.font = "Bold 40px Arial";
+                ctx.fillStyle = "white";
+                ctx.fillText(data.name, 0, 40);
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
-                sprite.position.y = 3.5; sprite.scale.set(4, 2, 1); mesh.add(sprite);
+                sprite.position.y = 3.5;
+                sprite.scale.set(4, 2, 1);
+                mesh.add(sprite);
 
                 if (data.role !== 'monster') {
-                    const otherFlash = new THREE.SpotLight(0xfffae6, 6.0, 150, Math.PI / 3.0, 0.5, 1.0);
-                    otherFlash.position.set(0, 1, 0); 
-                    const targetObj = new THREE.Object3D(); targetObj.position.set(0, 1, -10); mesh.add(targetObj);
-                    otherFlash.target = targetObj; mesh.add(otherFlash); mesh.userData.flashlight = otherFlash;
+                    const otherFlash = new THREE.SpotLight(0xfffae6, 16.0, 260, Math.PI / 2.6, 0.45, 0.8);
+                    otherFlash.position.set(0, 1, 0);
+                    const targetObj = new THREE.Object3D();
+                    targetObj.position.set(0, 1, -10);
+                    mesh.add(targetObj);
+                    otherFlash.target = targetObj;
+                    mesh.add(otherFlash);
+                    mesh.userData.flashlight = otherFlash;
                 }
-                scene.add(mesh); networkPlayers[data.id] = mesh;
+                scene.add(mesh);
+                networkPlayers[data.id] = mesh;
             }
             const mesh = networkPlayers[data.id];
-            mesh.position.set(data.pos[0], data.pos[1], data.pos[2]); mesh.rotation.set(data.rot[0], data.rot[1], data.rot[2]);
-            mesh.userData.isDead = data.isDead; mesh.userData.crouch = data.crouch;
+            mesh.position.set(data.pos[0], data.pos[1], data.pos[2]);
+            mesh.rotation.set(data.rot[0], data.rot[1], data.rot[2]);
+            mesh.userData.isDead = data.isDead;
+            mesh.userData.crouch = data.crouch;
             
-            if(data.crouch) mesh.position.y -= 1.0; 
+            if (data.crouch) mesh.position.y -= 1.0;
 
-            if(mesh.userData.flashlight) mesh.userData.flashlight.intensity = data.flash && !data.invisible ? 6.0 : 0;
+            if (mesh.userData.flashlight) mesh.userData.flashlight.intensity = data.flash && !data.invisible ? 16.0 : 0;
             mesh.visible = !data.invisible && !data.isDead;
             
-            if (playerData.xRayActive && mesh.material && mesh.userData.role !== 'monster' && !data.crouch) { 
-                mesh.material.depthTest = false; mesh.material.emissive.setHex(0xff0000); mesh.material.emissiveIntensity = 0.8;
+            if (playerData.xRayActive && mesh.material && mesh.userData.role !== 'monster' && !data.crouch) {
+                mesh.material.depthTest = false;
+                mesh.material.emissive.setHex(0xff0000);
+                mesh.material.emissiveIntensity = 0.8;
             } else if (mesh.material) {
-                mesh.material.depthTest = true; mesh.material.emissive.setHex(0x000000); 
+                mesh.material.depthTest = true;
+                mesh.material.emissive.setHex(0x000000);
             }
         }
     }
 
-    let monsterAIState = { active: false, timer: -15, stunTimer: 0, attackCd: 0 }; 
+    let monsterAIState = { active: false, timer: -15, stunTimer: 0, attackCd: 0 };
+
     function spawnMonsterAI() {
         const mat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-        new THREE.TextureLoader().load('monstro.png', tex => { mat.map = tex; mat.needsUpdate = true; });
+        new THREE.TextureLoader().load('monstro.png', tex => {
+            mat.map = tex;
+            mat.needsUpdate = true;
+        });
         monsterMesh = new THREE.Mesh(new THREE.BoxGeometry(2.5, 5, 2.5), mat);
-        monsterMesh.position.set(120, 2.5, 120); monsterMesh.visible = false; scene.add(monsterMesh);
+        monsterMesh.position.set(120, 2.5, 120);
+        monsterMesh.visible = false;
+        scene.add(monsterMesh);
     }
 
     let prevTime = performance.now();
+
     function animate() {
         requestAnimationFrame(animate);
-        const time = performance.now(); 
-        const delta = Math.min((time - prevTime) / 1000, 0.1); 
+        const time = performance.now();
+        const delta = Math.min((time - prevTime) / 1000, 0.1);
 
         if (rainGeo) {
             const positions = rainGeo.geometry.attributes.position.array;
-            for(let i=1; i<rainCount*3; i+=3) {
-                positions[i] -= 30 * delta; 
-                if(positions[i] < 0) positions[i] = 100;
+            for (let i = 1; i < rainCount * 3; i += 3) {
+                positions[i] -= 30 * delta;
+                if (positions[i] < 0) positions[i] = 100;
             }
             rainGeo.geometry.attributes.position.needsUpdate = true;
-            rainGeo.position.x = camera.position.x; rainGeo.position.z = camera.position.z;
+            rainGeo.position.x = camera.position.x;
+            rainGeo.position.z = camera.position.z;
         }
 
-        // Animando a rotação dos itens de speedblock no mapa
         mapItems.forEach(item => {
             if (item.active && item.type === 'speedblock' && item.mesh) {
                 item.mesh.rotation.y += 2 * delta;
@@ -845,15 +1187,17 @@
             }
         });
 
-        // Bateria dura mais agora (1.5 * delta ao inves de 3.0)
         if (playerData.role === 'survivor' && playerData.flashlightOn) {
-            playerData.flashlightBattery -= 1.5 * delta; 
+            playerData.flashlightBattery -= 1.5 * delta;
             if (playerData.flashlightBattery < 15 && playerData.flashlightBattery > 0) {
-                flashlight.intensity = Math.random() > 0.2 ? 6.0 : 0.5;
-            } else if (playerData.flashlightBattery <= 0) { 
-                playerData.flashlightBattery = 0; playerData.flashlightOn = false; flashlight.intensity = 0; showMessage("A LANTERNA APAGOU!"); 
+                flashlight.intensity = Math.random() > 0.2 ? 16.0 : 2.0;
+            } else if (playerData.flashlightBattery <= 0) {
+                playerData.flashlightBattery = 0;
+                playerData.flashlightOn = false;
+                flashlight.intensity = 0;
+                showMessage("A LANTERNA APAGOU!");
             } else {
-                flashlight.intensity = 6.0;
+                flashlight.intensity = 16.0;
             }
         } else if (playerData.role === 'survivor' && !playerData.flashlightOn) {
             flashlight.intensity = 0;
@@ -862,13 +1206,16 @@
         if (playerData.role === 'survivor' && !playerData.isDead) {
             let monsterClose = false;
             Object.values(networkPlayers).forEach(p => {
-                if (p.userData.role === 'monster' && p.visible && camera.position.distanceTo(p.position) < 25) { monsterClose = true; }
+                if (p.userData.role === 'monster' && p.visible && camera.position.distanceTo(p.position) < 25) {
+                    monsterClose = true;
+                }
             });
             if (gameMode === 'pve' && monsterMesh && monsterMesh.visible && camera.position.distanceTo(monsterMesh.position) < 25) {
                 monsterClose = true;
             }
-            if (monsterClose && time - lastProximityWarningTime > 8000) { 
-                showBigWarning("A BRISA ESTÁ CHEGANDO!", 2500); lastProximityWarningTime = time;
+            if (monsterClose && time - lastProximityWarningTime > 8000) {
+                showBigWarning("A BRISA ESTÁ CHEGANDO!", 2500);
+                lastProximityWarningTime = time;
             }
         }
 
@@ -877,14 +1224,23 @@
                 if (mSkills[k].active > 0) {
                     mSkills[k].active -= delta;
                     if (mSkills[k].active <= 0) {
-                        mSkills[k].active = 0; mSkills[k].cd = mSkills[k].maxCd;
-                        if(k === 'i') document.getElementById('invis-warning').style.display = 'none';
-                        if(k === 'f') {
+                        mSkills[k].active = 0;
+                        mSkills[k].cd = mSkills[k].maxCd;
+                        if (k === 'i') document.getElementById('invis-warning').style.display = 'none';
+                        if (k === 'f') {
                             playerData.xRayActive = false;
-                            Object.values(networkPlayers).forEach(mesh => { if(mesh.material) { mesh.material.depthTest = true; mesh.material.emissive.setHex(0x000000); } });
+                            Object.values(networkPlayers).forEach(mesh => {
+                                if (mesh.material) {
+                                    mesh.material.depthTest = true;
+                                    mesh.material.emissive.setHex(0x000000);
+                                }
+                            });
                         }
                     }
-                } else if (mSkills[k].cd > 0) { mSkills[k].cd -= delta; if (mSkills[k].cd < 0) mSkills[k].cd = 0; }
+                } else if (mSkills[k].cd > 0) {
+                    mSkills[k].cd -= delta;
+                    if (mSkills[k].cd < 0) mSkills[k].cd = 0;
+                }
             });
 
             if (playerData.xRayActive) {
@@ -893,8 +1249,14 @@
                     footprintTimer = 0;
                     Object.values(networkPlayers).forEach(p => {
                         if (p.userData.role === 'survivor' && !p.userData.crouch && !p.userData.isDead) {
-                            let fp = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.8), new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 0.8, depthTest: false}));
-                            fp.rotation.x = -Math.PI/2; fp.position.copy(p.position); fp.position.y = 0.1; fp.userData.life = 5.0;
+                            let fp = new THREE.Mesh(
+                                new THREE.PlaneGeometry(0.8, 0.8),
+                                new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.8, depthTest: false })
+                            );
+                            fp.rotation.x = -Math.PI / 2;
+                            fp.position.copy(p.position);
+                            fp.position.y = 0.1;
+                            fp.userData.life = 5.0;
                             footprintGroup.add(fp);
                         }
                     });
@@ -904,21 +1266,27 @@
         
         for (let i = footprintGroup.children.length - 1; i >= 0; i--) {
             let fp = footprintGroup.children[i];
-            fp.userData.life -= delta; fp.material.opacity = fp.userData.life / 5.0;
+            fp.userData.life -= delta;
+            fp.material.opacity = fp.userData.life / 5.0;
             if (fp.userData.life <= 0) footprintGroup.remove(fp);
         }
 
         if (controls.isLocked === true && !playerData.isDead) {
-            const oldPos = camera.position.clone(); 
+            const oldPos = camera.position.clone();
 
             if (playerData.stunTimer > 0) {
-                playerData.stunTimer -= delta; moveForward = false; moveBackward = false; moveLeft = false; moveRight = false;
+                playerData.stunTimer -= delta;
+                moveForward = false;
+                moveBackward = false;
+                moveLeft = false;
+                moveRight = false;
             }
 
             if (!moveForward && !moveBackward && Math.abs(velocity.z) < 0.5) velocity.z = 0;
             if (!moveLeft && !moveRight && Math.abs(velocity.x) < 0.5) velocity.x = 0;
 
-            velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta; 
+            velocity.x -= velocity.x * 10.0 * delta;
+            velocity.z -= velocity.z * 10.0 * delta;
             
             currentHeight += (targetHeight - currentHeight) * 10 * delta;
 
@@ -931,7 +1299,7 @@
                 }
             }
 
-            velocity.y -= 100.0 * delta; 
+            velocity.y -= 100.0 * delta;
             playerPhysicsY += velocity.y * delta;
 
             let isGrounded = false;
@@ -947,10 +1315,11 @@
             
             if (isMoving) {
                 if (isRunning && playerData.stamina > 0 && !isCrouching) {
-                    // ATUALIZADO: Stamina gasta menos (14 ao inves de 25)
-                    speedMult = 1.8; playerData.stamina -= 14 * delta;
+                    speedMult = 1.8;
+                    playerData.stamina -= 14 * delta;
                 } else if (isCrouching) {
-                    speedMult = 0.5; playerData.stamina += 5 * delta;
+                    speedMult = 0.5;
+                    playerData.stamina += 5 * delta;
                 } else {
                     playerData.stamina += 10 * delta;
                 }
@@ -958,55 +1327,69 @@
                 playerData.stamina += isCrouching ? 40 * delta : 25 * delta;
             }
             
-            // ATUALIZADO: Lógica de super velocidade do bloco verde (dobra a velocidade final)
             if (playerData.speedBoostTimer > 0) {
                 speedMult *= 2.0;
                 playerData.speedBoostTimer -= delta;
             }
             
-            // ATUALIZADO: Nerf na corrida da Brisa
-            if(mSkills.r && mSkills.r.active > 0) speedMult = 2.2; 
-            if (camera.position.z > 20 && camera.position.z < 40) speedMult *= 0.5; 
+            if (mSkills.r && mSkills.r.active > 0) speedMult = 2.2;
+            if (camera.position.z > 20 && camera.position.z < 40) speedMult *= 0.5;
 
             playerData.stamina = Math.max(0, Math.min(100, playerData.stamina));
-            direction.z = Number(moveForward) - Number(moveBackward); direction.x = Number(moveRight) - Number(moveLeft); direction.normalize();
+            direction.z = Number(moveForward) - Number(moveBackward);
+            direction.x = Number(moveRight) - Number(moveLeft);
+            direction.normalize();
 
             const speed = 40.0 * speedMult;
             if (moveForward || moveBackward) velocity.z -= direction.z * speed * delta;
             if (moveLeft || moveRight) velocity.x -= direction.x * speed * delta;
 
-            controls.moveRight(-velocity.x * delta); controls.moveForward(-velocity.z * delta);
+            controls.moveRight(-velocity.x * delta);
+            controls.moveForward(-velocity.z * delta);
             
             if (isGrounded && isMoving) {
                 headbobTime += delta * (speedMult > 1 ? 12 : 8);
                 headbobOffset = Math.sin(headbobTime) * (isCrouching ? 0.05 : 0.15);
             } else {
                 headbobTime = 0;
-                headbobOffset += (0 - headbobOffset) * 10 * delta; 
-                if(Math.abs(headbobOffset) < 0.01) headbobOffset = 0;
+                headbobOffset += (0 - headbobOffset) * 10 * delta;
+                if (Math.abs(headbobOffset) < 0.01) headbobOffset = 0;
             }
             
             camera.position.y = playerPhysicsY + headbobOffset;
 
             for (let col of colliders) {
                 if (Math.hypot(camera.position.x - col.x, camera.position.z - col.z) < col.radius + 0.4) {
-                    if (col.type === 'tree') { camera.position.x = oldPos.x; camera.position.z = oldPos.z; break; }
-                    else if (col.type === 'rock' && playerPhysicsY - currentHeight < col.topY) { camera.position.x = oldPos.x; camera.position.z = oldPos.z; break; }
+                    if (col.type === 'tree') {
+                        camera.position.x = oldPos.x;
+                        camera.position.z = oldPos.z;
+                        break;
+                    } else if (col.type === 'rock' && playerPhysicsY - currentHeight < col.topY) {
+                        camera.position.x = oldPos.x;
+                        camera.position.z = oldPos.z;
+                        break;
+                    }
                 }
             }
+
             if (camera.position.x < -148 || camera.position.x > 148 || camera.position.z < -148 || camera.position.z > 148) {
-                camera.position.x = oldPos.x; camera.position.z = oldPos.z;
+                camera.position.x = oldPos.x;
+                camera.position.z = oldPos.z;
             }
 
-            checkItems(); updateHUD(); drawMinimap();
-        } 
-        else if (playerData.isDead) {
+            checkItems();
+            updateHUD();
+            drawMinimap();
+        } else if (playerData.isDead) {
             let aliveSurvivors = [];
-            Object.values(networkPlayers).forEach(p => { if (p.userData.role !== 'monster' && !p.userData.isDead) aliveSurvivors.push(p); });
+            Object.values(networkPlayers).forEach(p => {
+                if (p.userData.role !== 'monster' && !p.userData.isDead) aliveSurvivors.push(p);
+            });
 
-            if(aliveSurvivors.length > 0) {
+            if (aliveSurvivors.length > 0) {
                 const targetMesh = aliveSurvivors[specIndex % aliveSurvivors.length];
-                camera.position.copy(targetMesh.position); camera.position.y += 0.5; 
+                camera.position.copy(targetMesh.position);
+                camera.position.y += 0.5;
                 camera.rotation.copy(targetMesh.rotation);
                 document.getElementById('spectator-name').innerText = "Assistindo: " + targetMesh.userData.name;
             } else {
@@ -1016,49 +1399,69 @@
 
         if (isHost && gameMode === 'pve' && monsterMesh) {
             if (monsterAIState.stunTimer > 0) {
-                monsterAIState.stunTimer -= delta; 
+                monsterAIState.stunTimer -= delta;
             } else {
                 monsterAIState.timer += delta;
-                if(monsterAIState.attackCd > 0) monsterAIState.attackCd -= delta;
+                if (monsterAIState.attackCd > 0) monsterAIState.attackCd -= delta;
 
                 if (monsterAIState.active && monsterAIState.timer > 35) {
-                    monsterAIState.active = false; monsterAIState.timer = 0; monsterMesh.visible = false;
+                    monsterAIState.active = false;
+                    monsterAIState.timer = 0;
+                    monsterMesh.visible = false;
                 } else if (!monsterAIState.active && monsterAIState.timer > 10) {
-                    monsterAIState.active = true; monsterAIState.timer = 0; monsterMesh.visible = true;
+                    monsterAIState.active = true;
+                    monsterAIState.timer = 0;
+                    monsterMesh.visible = true;
                     monsterMesh.position.set(Math.random() * 200 - 100, 2.5, Math.random() * 200 - 100);
-                    showBigWarning("A BRISA ESTÁ ATRÁS DE VOCÊ!", 3000); broadcast({ type: 'brisaSpawned' }); 
+                    showBigWarning("A BRISA ESTÁ ATRÁS DE VOCÊ!", 3000);
+                    broadcast({ type: 'brisaSpawned' });
                 }
 
                 if (monsterAIState.active) {
                     const dirToHost = new THREE.Vector3().subVectors(camera.position, monsterMesh.position).normalize();
                     let aiSpeed = 6 + playerData.pages * 1.0;
-                    if (monsterMesh.position.z > 20 && monsterMesh.position.z < 40) aiSpeed *= 0.5; 
+                    if (monsterMesh.position.z > 20 && monsterMesh.position.z < 40) aiSpeed *= 0.5;
                     
                     monsterMesh.position.add(dirToHost.multiplyScalar(delta * aiSpeed));
                     monsterMesh.lookAt(camera.position);
 
                     if (monsterMesh.position.distanceTo(camera.position) < 3.0 && playerData.role !== 'monster' && !playerData.isDead) {
                         if (monsterAIState.attackCd <= 0) {
-                            playerData.health -= 2; monsterAIState.attackCd = 1.5; 
-                            showMessage("A BRISA TE ATACOU! (-1 Coração)"); updateHUD();
+                            playerData.health -= 2;
+                            monsterAIState.attackCd = 1.5;
+                            showMessage("A BRISA TE ATACOU! (-1 Coração)");
+                            updateHUD();
                             
-                            const blood = document.getElementById('blood-overlay'); blood.style.opacity = 1; setTimeout(() => blood.style.opacity = 0, 500);
-                            const heartsUi = document.getElementById('hearts'); heartsUi.style.transform = "scale(1.5) translateX(10px)"; heartsUi.style.color = "#ff0000";
-                            setTimeout(() => { heartsUi.style.transform = "scale(1)"; heartsUi.style.color = "#fff"; }, 200);
+                            const blood = document.getElementById('blood-overlay');
+                            blood.style.opacity = 1;
+                            setTimeout(() => blood.style.opacity = 0, 500);
+
+                            const heartsUi = document.getElementById('hearts');
+                            heartsUi.style.transform = "scale(1.5) translateX(10px)";
+                            heartsUi.style.color = "#ff0000";
+                            setTimeout(() => {
+                                heartsUi.style.transform = "scale(1)";
+                                heartsUi.style.color = "#fff";
+                            }, 200);
 
                             const kb = new THREE.Vector3().subVectors(camera.position, monsterMesh.position).normalize().multiplyScalar(15);
                             camera.position.add(kb);
-                            if(playerData.health <= 0) triggerDeath(monsterMesh.position.toArray()); 
+                            if (playerData.health <= 0) triggerDeath(monsterMesh.position.toArray());
                         }
                     }
                 }
             }
         }
 
-        renderer.render(scene, camera); prevTime = time;
+        renderer.render(scene, camera);
+        prevTime = time;
     }
 
-    function activateXRay() { playerData.xRayActive = true; showMessage("VISÃO DE RAIO-X!"); scene.fog.density = 0; }
+    function activateXRay() {
+        playerData.xRayActive = true;
+        showMessage("VISÃO DE RAIO-X!");
+        scene.fog.density = 0;
+    }
 </script>
 </body>
 </html>
